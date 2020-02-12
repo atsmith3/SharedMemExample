@@ -13,14 +13,14 @@
 #include <sys/shm.h> 
 #include <sys/stat.h>
 #include <unistd.h>
-#include <pthread.h>
+#include <semaphore.h>
 
 #define SHM_LENGTH   sizeof(mapped)
 #define STR_LENGTH   4096
 #define SHM_NAME     "shm_test"
 
 typedef struct {
-  pthread_mutex_t mutex;
+  sem_t sem;
   uint8_t new_data;
   uint8_t done;
   char str[STR_LENGTH];
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
   }
 
   // Init shared mem struct:
-  pthread_mutex_init(&shm_ptr->mutex, NULL);
+  sem_init(&shm_ptr->sem, 1, 1);
   shm_ptr->new_data = 0;
   shm_ptr->done = 0;
   shm_ptr->str[0] = 0;
@@ -52,8 +52,7 @@ int main(int argc, char** argv) {
   for(int i = 0; i < 20; i++) {
     was_consumed = 0;
     while(was_consumed == 0) { 
-      usleep(100);
-      pthread_mutex_lock(&shm_ptr->mutex);
+      sem_wait(&shm_ptr->sem);
       if(shm_ptr->new_data == 0) {
         was_consumed = 1;
         snprintf(shm_ptr->str, STR_LENGTH, "%s %d\n", "Hello", i);
@@ -62,7 +61,7 @@ int main(int argc, char** argv) {
           shm_ptr->done = 1;
         }
       }
-      pthread_mutex_unlock(&shm_ptr->mutex);
+      sem_post(&shm_ptr->sem);
     }
   }
 
@@ -70,8 +69,6 @@ int main(int argc, char** argv) {
   shm_unlink(SHM_NAME);
   return 0;
 #else
-  // Wait for initialization to occur:
-  sleep(2);
   int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
   if(shm_fd == -1) {
     fprintf(stderr,"Failed to open /dev/shm/%s\n", SHM_NAME);
@@ -86,14 +83,13 @@ int main(int argc, char** argv) {
 
   int done = 0;
   while(done == 0) {
-    usleep(100);
-    pthread_mutex_lock(&shm_ptr->mutex);
+    sem_wait(&shm_ptr->sem);
     if(shm_ptr->new_data == 1) {
       printf("%s", shm_ptr->str);
       shm_ptr->new_data = 0;
     }
     done = shm_ptr->done;
-    pthread_mutex_unlock(&shm_ptr->mutex);
+    sem_post(&shm_ptr->sem);
   }
 
   munmap(shm_ptr, SHM_LENGTH);

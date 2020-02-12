@@ -1,5 +1,5 @@
 CFLAGS = -Wall -std=c11 -D_XOPEN_SOURCE=500 -O0 -g
-LFLAGS = -lrt
+LFLAGS = -lrt -pthread
 
 .PHONY: clean
 
